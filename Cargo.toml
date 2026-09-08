@@ -1,0 +1,11 @@
+[package]
+name = "semlint"
+version = "0.1.0"
+edition = "2021"
+authors = ["ryan-h224"]
+description = "A strict SemVer linter with an explicit --lenient escape hatch"
+license = "MIT"
+
+[[bin]]
+name = "semlint"
+path = "src/main.rs"
