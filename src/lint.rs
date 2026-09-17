@@ -197,3 +197,183 @@ fn check_dotted_identifiers(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn errors(input: &str, lenient: bool) -> Vec<Finding> {
+        lint_str(input, lenient)
+            .into_iter()
+            .filter(|f| f.severity == Severity::Error)
+            .collect()
+    }
+
+    fn warnings(input: &str, lenient: bool) -> Vec<Finding> {
+        lint_str(input, lenient)
+            .into_iter()
+            .filter(|f| f.severity == Severity::Warning)
+            .collect()
+    }
+
+    #[test]
+    fn valid_version_has_no_findings() {
+        assert!(lint_str("1.2.3", false).is_empty());
+        assert!(lint_str("1.2.3-alpha.1+build.5", false).is_empty());
+        assert!(lint_str("0.0.0", false).is_empty());
+    }
+
+    #[test]
+    fn blank_and_comment_lines_are_skipped() {
+        assert!(lint_str("\n# not a version\n   \n", false).is_empty());
+    }
+
+    #[test]
+    fn v_prefix_is_an_error_in_strict_mode() {
+        let findings = errors("v1.2.3", false);
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].message.contains("'v' prefix"));
+    }
+
+    #[test]
+    fn v_prefix_is_stripped_and_ignored_in_lenient_mode() {
+        assert!(lint_str("v1.2.3", true).is_empty());
+        assert!(lint_str("V1.2.3", true).is_empty());
+    }
+
+    #[test]
+    fn short_form_is_an_error_in_strict_mode() {
+        let findings = errors("1.2", false);
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].message.contains("major.minor.patch"));
+    }
+
+    #[test]
+    fn short_form_is_a_warning_in_lenient_mode() {
+        let w = warnings("1.2", true);
+        assert_eq!(w.len(), 1);
+        assert!(w[0].message.contains("2 of 3"));
+        assert!(errors("1.2", true).is_empty());
+    }
+
+    #[test]
+    fn non_numeric_short_form_is_still_an_error_in_lenient_mode() {
+        let findings = errors("1.x", true);
+        assert!(findings.iter().any(|f| f.message.contains("major.minor.patch")));
+        assert!(findings
+            .iter()
+            .any(|f| f.message.contains("minor component 'x' is not a plain number")));
+    }
+
+    #[test]
+    fn too_many_core_components_is_an_error() {
+        let findings = errors("1.2.3.4", false);
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].message.contains("major.minor.patch"));
+    }
+
+    #[test]
+    fn empty_core_component_is_an_error() {
+        let findings = errors("1..3", false);
+        assert!(findings.iter().any(|f| f.message.contains("minor component is empty")));
+    }
+
+    #[test]
+    fn non_numeric_core_component_is_an_error() {
+        let findings = errors("1.a.3", false);
+        assert!(findings
+            .iter()
+            .any(|f| f.message.contains("minor component 'a' is not a plain number")));
+    }
+
+    #[test]
+    fn leading_zero_core_component_is_an_error() {
+        let findings = errors("1.02.3", false);
+        assert!(findings.iter().any(|f| f.message.contains("leading zero")));
+    }
+
+    #[test]
+    fn single_digit_zero_component_is_not_a_leading_zero_error() {
+        assert!(lint_str("0.1.0", false).is_empty());
+    }
+
+    #[test]
+    fn empty_pre_release_section_is_an_error() {
+        let findings = errors("1.2.3-", false);
+        assert!(findings
+            .iter()
+            .any(|f| f.message.contains("pre-release in '1.2.3-' is empty")));
+    }
+
+    #[test]
+    fn empty_pre_release_identifier_between_dots_is_an_error() {
+        let findings = errors("1.2.3-alpha..1", false);
+        assert!(findings
+            .iter()
+            .any(|f| f.message.contains("empty identifier between dots")));
+    }
+
+    #[test]
+    fn invalid_pre_release_characters_are_an_error() {
+        let findings = errors("1.2.3-alpha_beta", false);
+        assert!(findings
+            .iter()
+            .any(|f| f.message.contains("outside [0-9A-Za-z-]")));
+    }
+
+    #[test]
+    fn leading_zero_numeric_pre_release_identifier_is_an_error() {
+        let findings = errors("1.2.3-01", false);
+        assert!(findings
+            .iter()
+            .any(|f| f.message.contains("numeric pre-release identifier '01'")));
+    }
+
+    #[test]
+    fn leading_zero_alphanumeric_pre_release_identifier_is_allowed() {
+        assert!(lint_str("1.2.3-0alpha", false).is_empty());
+    }
+
+    #[test]
+    fn empty_build_metadata_section_is_an_error() {
+        let findings = errors("1.2.3+", false);
+        assert!(findings
+            .iter()
+            .any(|f| f.message.contains("build metadata in '1.2.3+' is empty")));
+    }
+
+    #[test]
+    fn empty_build_metadata_identifier_between_dots_is_an_error() {
+        let findings = errors("1.2.3+build..5", false);
+        assert!(findings
+            .iter()
+            .any(|f| f.message.contains("build metadata") && f.message.contains("empty identifier between dots")));
+    }
+
+    #[test]
+    fn invalid_build_metadata_characters_are_an_error() {
+        let findings = errors("1.2.3+build_5", false);
+        assert!(findings
+            .iter()
+            .any(|f| f.message.contains("build metadata identifier") && f.message.contains("outside [0-9A-Za-z-]")));
+    }
+
+    #[test]
+    fn leading_zero_build_metadata_identifier_is_allowed() {
+        assert!(lint_str("1.2.3+001", false).is_empty());
+    }
+
+    #[test]
+    fn line_and_column_are_reported_for_multiple_lines() {
+        let findings = errors("1.2.3\n  v2.0.0\n", false);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].line, 2);
+        assert_eq!(findings[0].column, 3);
+    }
+
+    #[test]
+    fn multiple_findings_on_one_token_are_all_reported() {
+        let findings = errors("v1.02.3-01", false);
+        assert!(findings.len() >= 3);
+    }
+}
