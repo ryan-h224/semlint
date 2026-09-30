@@ -40,6 +40,14 @@ pub fn lint_str(input: &str, lenient: bool) -> Vec<Finding> {
     findings
 }
 
+/// Lints a single version string at a known position, for callers that
+/// extracted it from somewhere other than a one-per-line file.
+pub fn lint_version(token: &str, line: usize, column: usize, lenient: bool) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    check_version(token, line, column, lenient, &mut findings);
+    findings
+}
+
 fn check_version(token: &str, line: usize, column: usize, lenient: bool, findings: &mut Vec<Finding>) {
     let mut rest = token;
 

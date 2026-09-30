@@ -75,7 +75,26 @@ with `#` are skipped, so a versions file can carry its own comments.
 - an empty, malformed, or leading-zero pre-release identifier
 - an empty or malformed build-metadata identifier
 
+## Manifests
+
+A file named `Cargo.toml` or `package.json` is read as a manifest instead of
+a list: semlint finds the package's own version and lints just that.
+
+```
+$ semlint Cargo.toml web/package.json
+Cargo.toml:3:12: error: minor component '02' has a leading zero, which SemVer forbids
+```
+
+For `Cargo.toml` the field is `version` under `[package]` or
+`[workspace.package]`; dependency versions are not checked, and
+`version.workspace = true` has nothing to check. For `package.json` it is
+the top-level `"version"` string. If a manifest has no version field, a
+note goes to stderr and the exit status is unaffected. Detection is by file
+name only, and the lookup is a small scanner rather than a full TOML or
+JSON parser, so exotic formatting (a JSON value on a different line from
+its key, for example) is not picked up.
+
 ## Status
 
-Early. Only the "one version per line" input shape is supported -- there's
-no scanning of Cargo.toml, package.json, or Git tags directly yet.
+Early. Plain version lists and the two manifests above are supported;
+there's no reading of Git tags directly yet.
